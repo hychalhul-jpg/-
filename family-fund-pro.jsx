@@ -1,0 +1,663 @@
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Check, X, DollarSign, Users, BarChart3, Calendar, Download, Upload, Printer, Settings, Mail, Cloud, AlertCircle, LogOut, Save, Edit2, TrendingUp, Home, HelpCircle, Moon, Sun } from 'lucide-react';
+
+export default function FamilyFund() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  const [fundOwner, setFundOwner] = useState('');
+  const [darkMode, setDarkMode] = useState(false);
+  
+  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [members, setMembers] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [monthlyAmount, setMonthlyAmount] = useState(100);
+  const [monthlyData, setMonthlyData] = useState({});
+  
+  const [editingMemberId, setEditingMemberId] = useState(null);
+  const [editingMemberName, setEditingMemberName] = useState('');
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
+  const [editingExpenseData, setEditingExpenseData] = useState({ description: '', amount: '' });
+  const [newMemberName, setNewMemberName] = useState('');
+  const [expenseData, setExpenseData] = useState({ description: '', amount: '' });
+  
+  const [showSettings, setShowSettings] = useState(false);
+  const [showMonthHistory, setShowMonthHistory] = useState(false);
+  const [showDebts, setShowDebts] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [paymentMonths, setPaymentMonths] = useState({});
+  const [activePage, setActivePage] = useState('dashboard');
+
+  useEffect(() => {
+    const savedLogin = localStorage.getItem('isLoggedIn');
+    const savedEmail = localStorage.getItem('userEmail');
+    const savedOwner = localStorage.getItem('fundOwner');
+    const savedMonthlyData = localStorage.getItem('monthlyData');
+    const savedDarkMode = localStorage.getItem('darkMode');
+
+    if (savedLogin && savedEmail) {
+      setIsLoggedIn(true);
+      setUserEmail(savedEmail);
+      setFundOwner(savedOwner || '');
+      if (savedDarkMode) setDarkMode(JSON.parse(savedDarkMode));
+      
+      if (savedMonthlyData) {
+        const data = JSON.parse(savedMonthlyData);
+        setMonthlyData(data);
+        if (data[currentMonth]) {
+          loadMonthData(currentMonth, data);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      saveMonthData();
+    }
+  }, [members, expenses, monthlyAmount, currentMonth]);
+
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  const saveMonthData = () => {
+    const newMonthlyData = {
+      ...monthlyData,
+      [currentMonth]: {
+        members: [...members],
+        expenses: [...expenses],
+        monthlyAmount,
+        lastModified: new Date().toLocaleString('ar-SA'),
+        lastModifiedTime: new Date().toISOString()
+      }
+    };
+    
+    setMonthlyData(newMonthlyData);
+    localStorage.setItem('monthlyData', JSON.stringify(newMonthlyData));
+  };
+
+  const loadMonthData = (month, data = monthlyData) => {
+    if (data[month]) {
+      setMembers(JSON.parse(JSON.stringify(data[month].members)));
+      setExpenses(JSON.parse(JSON.stringify(data[month].expenses)));
+      setMonthlyAmount(data[month].monthlyAmount);
+      setCurrentMonth(month);
+    } else {
+      setMembers([]);
+      setExpenses([]);
+      setMonthlyAmount(100);
+      setCurrentMonth(month);
+    }
+  };
+
+  const handleGmailLogin = () => {
+    const email = prompt('أدخل بريد Gmail:\n(مثال: your.email@gmail.com)');
+    if (email && email.includes('@gmail.com')) {
+      const name = prompt('أدخل اسمك:');
+      if (name) {
+        setIsLoggedIn(true);
+        setUserEmail(email);
+        setFundOwner(name);
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('userEmail', email);
+        localStorage.setItem('fundOwner', name);
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    if (confirm('هل تريد تسجيل الخروج؟')) {
+      setIsLoggedIn(false);
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userEmail');
+      localStorage.removeItem('fundOwner');
+    }
+  };
+
+  const calculateDebt = (memberId) => {
+    let totalOwed = 0;
+    const unpaidMonths = [];
+    Object.keys(monthlyData).forEach(month => {
+      const monthData = monthlyData[month];
+      const member = monthData.members?.find(m => m.id === memberId);
+      if (member && !member.paid) {
+        totalOwed += monthData.monthlyAmount;
+        unpaidMonths.push(month);
+      }
+    });
+    return { totalOwed, unpaidMonths };
+  };
+
+  const handlePayment = (memberId) => {
+    const { unpaidMonths } = calculateDebt(memberId);
+    setSelectedMemberId(memberId);
+    const months = {};
+    unpaidMonths.forEach(m => {
+      months[m] = false;
+    });
+    months[currentMonth] = true;
+    setPaymentMonths(months);
+    setShowPaymentModal(true);
+  };
+
+  const confirmPayment = () => {
+    const selectedMonths = Object.keys(paymentMonths).filter(m => paymentMonths[m]);
+    if (selectedMonths.length === 0) {
+      alert('❌ اختر شهراً واحداً على الأقل');
+      return;
+    }
+
+    const newMonthlyData = { ...monthlyData };
+    selectedMonths.forEach(month => {
+      if (newMonthlyData[month]) {
+        newMonthlyData[month] = {
+          ...newMonthlyData[month],
+          members: newMonthlyData[month].members.map(m =>
+            m.id === selectedMemberId ? { ...m, paid: true } : m
+          )
+        };
+      }
+    });
+
+    setMonthlyData(newMonthlyData);
+    localStorage.setItem('monthlyData', JSON.stringify(newMonthlyData));
+    loadMonthData(currentMonth, newMonthlyData);
+    setShowPaymentModal(false);
+    setSelectedMemberId(null);
+  };
+
+  const addMember = () => {
+    if (newMemberName.trim()) {
+      setMembers([...members, {
+        id: Date.now(),
+        name: newMemberName,
+        paid: false
+      }]);
+      setNewMemberName('');
+    }
+  };
+
+  const startEditMember = (id, name) => {
+    setEditingMemberId(id);
+    setEditingMemberName(name);
+  };
+
+  const saveEditMember = () => {
+    setMembers(members.map(m => 
+      m.id === editingMemberId ? { ...m, name: editingMemberName } : m
+    ));
+    setEditingMemberId(null);
+  };
+
+  const deleteMember = (id) => {
+    if (confirm('حذف هذا الشخص؟')) {
+      const newMonthlyData = { ...monthlyData };
+      Object.keys(newMonthlyData).forEach(month => {
+        newMonthlyData[month] = {
+          ...newMonthlyData[month],
+          members: newMonthlyData[month].members.filter(m => m.id !== id)
+        };
+      });
+      setMonthlyData(newMonthlyData);
+      localStorage.setItem('monthlyData', JSON.stringify(newMonthlyData));
+      setMembers(members.filter(m => m.id !== id));
+    }
+  };
+
+  const changeMonth = (offset) => {
+    const date = new Date(currentMonth + '-01');
+    date.setMonth(date.getMonth() + offset);
+    const newMonth = date.toISOString().slice(0, 7);
+    loadMonthData(newMonth);
+  };
+
+  const addExpense = () => {
+    if (expenseData.description.trim() && expenseData.amount) {
+      setExpenses([...expenses, {
+        id: Date.now(),
+        description: expenseData.description,
+        amount: parseFloat(expenseData.amount),
+        date: new Date().toLocaleDateString('ar-SA'),
+        month: currentMonth
+      }]);
+      setExpenseData({ description: '', amount: '' });
+    }
+  };
+
+  const deleteExpense = (id) => {
+    if (confirm('حذف المصروف؟')) {
+      setExpenses(expenses.filter(e => e.id !== id));
+    }
+  };
+
+  const monthlyIncome = members.filter(m => m.paid).length * monthlyAmount;
+  const monthlyExpenses = expenses.filter(e => e.month === currentMonth).reduce((sum, e) => sum + e.amount, 0);
+  const balance = monthlyIncome - monthlyExpenses;
+  const paidCount = members.filter(m => m.paid).length;
+
+  const monthName = {
+    '01': 'يناير', '02': 'فبراير', '03': 'مارس', '04': 'أبريل',
+    '05': 'مايو', '06': 'يونيو', '07': 'يوليو', '08': 'أغسطس',
+    '09': 'سبتمبر', '10': 'أكتوبر', '11': 'نوفمبر', '12': 'ديسمبر'
+  };
+  const [year, month] = currentMonth.split('-');
+
+  if (!isLoggedIn) {
+    return (
+      <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-950' : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'}`}>
+        <div className="flex items-center justify-center min-h-screen px-4">
+          <div className={`rounded-3xl shadow-2xl max-w-md w-full p-8 ${darkMode ? 'bg-gray-900' : 'bg-white'} transition-colors`}>
+            <div className="text-7xl mb-8 text-center">👨‍👩‍👧‍👦</div>
+            <h1 className={`text-5xl font-bold text-center mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              صندوق العائلة
+            </h1>
+            <p className={`text-center mb-8 text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              إدارة مالية آمنة وذكية لعائلتك
+            </p>
+            
+            <button
+              onClick={handleGmailLogin}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 mb-6 shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
+            >
+              <Mail size={24} /> دخول عبر Gmail
+            </button>
+
+            <div className={`rounded-xl p-6 text-sm ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-blue-50 text-blue-900'}`}>
+              <p className="font-bold mb-3">✨ المميزات:</p>
+              <ul className="space-y-2">
+                <li>📅 تتبع شامل للمصاريف</li>
+                <li>💳 نظام ديون ذكي</li>
+                <li>📊 تقارير تفصيلية</li>
+                <li>🔒 بيانات آمنة في Gmail</li>
+                <li>🌙 وضع ليلي للراحة</li>
+              </ul>
+            </div>
+
+            <p className={`text-center text-xs mt-8 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+              طُور بواسطة: <strong>قصي أبوصايمة</strong>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+      {/* Header احترافي */}
+      <header className={`sticky top-0 z-40 backdrop-blur-xl ${darkMode ? 'bg-gray-900/80 border-gray-800' : 'bg-white/80 border-gray-100'} border-b transition-colors`}>
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gradient-to-br from-blue-100 to-indigo-100'}`}>
+                <DollarSign size={28} className="text-blue-600" />
+              </div>
+              <div>
+                <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  صندوق العائلة
+                </h1>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {fundOwner} • {monthName[month]} {year}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`p-2 rounded-lg transition-all ${darkMode ? 'bg-gray-800 text-yellow-400' : 'bg-gray-100 text-gray-700'}`}
+              >
+                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+              <button
+                onClick={() => setShowDebts(!showDebts)}
+                className={`p-2 rounded-lg transition-all ${showDebts ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-700'}`}
+              >
+                <TrendingUp size={20} />
+              </button>
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className={`p-2 rounded-lg transition-all ${showSettings ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-700'}`}
+              >
+                <Settings size={20} />
+              </button>
+              <button
+                onClick={handleLogout}
+                className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all"
+              >
+                <LogOut size={20} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* تقرير الديون */}
+      {showDebts && (
+        <div className={`border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-red-50 border-red-200'} transition-colors`}>
+          <div className="max-w-7xl mx-auto px-4 py-6">
+            <h3 className={`text-xl font-bold mb-6 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <TrendingUp size={24} /> 💳 تقرير الديون
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {members.map(member => {
+                const { totalOwed, unpaidMonths } = calculateDebt(member.id);
+                return (
+                  <div
+                    key={member.id}
+                    className={`p-5 rounded-2xl border-l-4 transition-all transform hover:scale-105 ${
+                      totalOwed > 0
+                        ? `${darkMode ? 'bg-gray-800 border-red-500' : 'bg-white border-red-500'} shadow-lg`
+                        : `${darkMode ? 'bg-gray-800 border-green-500' : 'bg-white border-green-500'} shadow`
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        {member.name}
+                      </h4>
+                      <span className={`font-bold text-lg ${
+                        totalOwed > 0 ? 'text-red-600' : 'text-green-600'
+                      }`}>
+                        {totalOwed > 0 ? `${totalOwed} ₪` : '✓'}
+                      </span>
+                    </div>
+                    
+                    {totalOwed > 0 && (
+                      <div className="mb-3">
+                        <p className={`text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          أشهر متبقية: {unpaidMonths.length}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {unpaidMonths.slice(0, 3).map(m => (
+                            <span key={m} className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-red-100 text-red-700'}`}>
+                              {monthName[m.split('-')[1]]}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <button
+                      onClick={() => handlePayment(member.id)}
+                      className={`w-full px-3 py-2 rounded-lg font-bold text-white text-sm transition-all ${
+                        totalOwed > 0
+                          ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                          : 'bg-gray-400 cursor-not-allowed'
+                      }`}
+                      disabled={totalOwed === 0}
+                    >
+                      {totalOwed > 0 ? '💳 دفع' : 'مكتمل'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal الدفع */}
+      {showPaymentModal && selectedMemberId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className={`rounded-3xl shadow-2xl max-w-md w-full p-8 ${darkMode ? 'bg-gray-900' : 'bg-white'} transition-colors`}>
+            <h3 className={`text-2xl font-bold text-center mb-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              💳 تسجيل دفع
+            </h3>
+            
+            <div className={`space-y-2 mb-6 max-h-64 overflow-y-auto p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+              {Object.keys(paymentMonths).map(month => (
+                <label key={month} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}>
+                  <input
+                    type="checkbox"
+                    checked={paymentMonths[month]}
+                    onChange={(e) => setPaymentMonths({
+                      ...paymentMonths,
+                      [month]: e.target.checked
+                    })}
+                    className="w-5 h-5 rounded cursor-pointer"
+                  />
+                  <span className={`flex-1 font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                    {monthName[month.split('-')[1]]}
+                  </span>
+                  <span className="font-bold text-blue-600">{monthlyAmount} ₪</span>
+                </label>
+              ))}
+            </div>
+
+            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-gray-800' : 'bg-blue-50'}`}>
+              <p className={`text-center font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                المجموع: <span className="text-blue-600">{Object.values(paymentMonths).filter(Boolean).length * monthlyAmount} ₪</span>
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={confirmPayment}
+                className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white px-6 py-3 rounded-xl font-bold transition-all transform hover:scale-105"
+              >
+                ✓ تأكيد
+              </button>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedMemberId(null);
+                }}
+                className={`px-6 py-3 rounded-xl font-bold transition-all transform hover:scale-105 ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}
+              >
+                ✗ إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* المحتوى الرئيسي */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* تحكم الأشهر */}
+        <div className={`rounded-2xl p-6 mb-8 flex items-center justify-between ${darkMode ? 'bg-gray-900 border border-gray-800' : 'bg-white shadow-md'} transition-colors`}>
+          <button
+            onClick={() => changeMonth(-1)}
+            className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold transition-all transform hover:scale-110"
+          >
+            ←
+          </button>
+          <h2 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {monthName[month]} {year}
+          </h2>
+          <button
+            onClick={() => changeMonth(1)}
+            className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold transition-all transform hover:scale-110"
+          >
+            →
+          </button>
+        </div>
+
+        {/* الشبكة الرئيسية */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* الأعضاء */}
+          <div className={`lg:col-span-1 rounded-2xl p-6 ${darkMode ? 'bg-gray-900 border border-gray-800' : 'bg-white shadow-lg'} transition-colors`}>
+            <h2 className={`text-2xl font-bold mb-6 flex items-center gap-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <Users size={28} className="text-blue-600" /> الأعضاء
+            </h2>
+
+            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-gray-800' : 'bg-blue-50'}`}>
+              <label className={`block text-sm font-bold mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                المبلغ الشهري
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={monthlyAmount}
+                  onChange={(e) => setMonthlyAmount(parseFloat(e.target.value) || 0)}
+                  className={`flex-1 px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'} focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                />
+                <span className={`px-4 py-2 rounded-lg font-bold ${darkMode ? 'bg-gray-700 text-white' : 'bg-blue-100 text-blue-600'}`}>₪</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <input
+                type="text"
+                value={newMemberName}
+                onChange={(e) => setNewMemberName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addMember()}
+                placeholder="إضافة عضو"
+                className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'border-gray-300 placeholder-gray-500'} focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+              />
+              <button
+                onClick={addMember}
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center gap-2"
+              >
+                <Plus size={20} /> إضافة
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {members.length === 0 ? (
+                <div className={`text-center py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  👥 لا يوجد أعضاء
+                </div>
+              ) : (
+                members.map(member => {
+                  const { totalOwed } = calculateDebt(member.id);
+                  return (
+                    <div
+                      key={member.id}
+                      className={`p-4 rounded-xl transition-all ${member.paid ? (darkMode ? 'bg-gray-800 border border-green-500/30' : 'bg-green-50 border border-green-200') : (darkMode ? 'bg-gray-800 border border-red-500/30' : 'bg-red-50 border border-red-200')}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{member.name}</p>
+                        <button
+                          onClick={() => handlePayment(member.id)}
+                          className={`px-3 py-1 rounded-lg text-sm font-bold text-white transition-all ${totalOwed > 0 ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-400'}`}
+                          disabled={totalOwed === 0}
+                        >
+                          💳
+                        </button>
+                      </div>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {member.paid ? '✓ دفع' : '✗ لم يدفع'} {totalOwed > 0 ? ` | ${totalOwed} ₪` : ''}
+                      </p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* المصاريف والملخص */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* المصاريف */}
+            <div className={`rounded-2xl p-6 ${darkMode ? 'bg-gray-900 border border-gray-800' : 'bg-white shadow-lg'} transition-colors`}>
+              <h2 className={`text-2xl font-bold mb-6 flex items-center gap-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                <BarChart3 size={28} className="text-orange-600" /> المصاريف
+              </h2>
+
+              <div className="space-y-3 mb-6">
+                <input
+                  type="text"
+                  value={expenseData.description}
+                  onChange={(e) => setExpenseData({...expenseData, description: e.target.value})}
+                  placeholder="وصف المصروف"
+                  className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'border-gray-300 placeholder-gray-500'} focus:ring-2 focus:ring-orange-500 focus:border-transparent`}
+                />
+                <div className="flex gap-3">
+                  <input
+                    type="number"
+                    value={expenseData.amount}
+                    onChange={(e) => setExpenseData({...expenseData, amount: e.target.value})}
+                    onKeyPress={(e) => e.key === 'Enter' && addExpense()}
+                    placeholder="المبلغ"
+                    className={`flex-1 px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'border-gray-300 placeholder-gray-500'} focus:ring-2 focus:ring-orange-500 focus:border-transparent`}
+                  />
+                  <button
+                    onClick={addExpense}
+                    className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold px-6 py-3 rounded-xl transition-all transform hover:scale-105"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {expenses.filter(e => e.month === currentMonth).length === 0 ? (
+                  <div className={`text-center py-6 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    💰 لا يوجد مصاريف
+                  </div>
+                ) : (
+                  expenses.filter(e => e.month === currentMonth).map(expense => (
+                    <div key={expense.id} className={`p-4 rounded-xl flex items-center justify-between ${darkMode ? 'bg-gray-800' : 'bg-orange-50'}`}>
+                      <div>
+                        <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{expense.description}</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{expense.date}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-bold text-orange-600">{expense.amount} ₪</p>
+                        <button
+                          onClick={() => deleteExpense(expense.id)}
+                          className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* الملخص */}
+            <div className={`rounded-2xl p-8 bg-gradient-to-br ${darkMode ? 'from-gray-900 to-gray-800' : 'from-blue-600 to-indigo-600'} text-white shadow-2xl transition-colors`}>
+              <h2 className="text-3xl font-bold mb-8 flex items-center gap-3">
+                <TrendingUp size={32} /> الملخص
+              </h2>
+              
+              <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 text-center">
+                  <p className="text-white/80 text-sm mb-2">الدخل</p>
+                  <p className="text-4xl font-bold">{monthlyIncome}</p>
+                  <p className="text-white/80 text-xs mt-1">₪</p>
+                </div>
+                <div className="p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 text-center">
+                  <p className="text-white/80 text-sm mb-2">المصاريف</p>
+                  <p className="text-4xl font-bold">{monthlyExpenses}</p>
+                  <p className="text-white/80 text-xs mt-1">₪</p>
+                </div>
+                <div className={`p-6 rounded-2xl backdrop-blur-sm border-2 ${balance >= 0 ? 'border-green-400' : 'border-red-400'} text-center`}>
+                  <p className="text-white/80 text-sm mb-2">الرصيد</p>
+                  <p className={`text-4xl font-bold ${balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>{balance}</p>
+                  <p className="text-white/80 text-xs mt-1">₪</p>
+                </div>
+              </div>
+
+              <div className={`grid grid-cols-2 gap-6 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white/10'} text-sm`}>
+                <div>
+                  <p className="text-white/80 mb-2">👥 إجمالي الأعضاء</p>
+                  <p className="text-2xl font-bold">{members.length}</p>
+                </div>
+                <div>
+                  <p className="text-white/80 mb-2">✓ دفعوا</p>
+                  <p className="text-2xl font-bold text-green-400">{paidCount}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className={`mt-16 py-8 border-t ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-gray-50'} transition-colors`}>
+        <div className="max-w-7xl mx-auto px-4 text-center">
+          <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
+            طُور بواسطة <strong className={darkMode ? 'text-white' : 'text-gray-900'}>قصي أبوصايمة</strong>
+          </p>
+          <p className={`text-xs mt-2 ${darkMode ? 'text-gray-600' : 'text-gray-500'}`}>
+            صندوق العائلة v1.0 © 2024
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
+}
